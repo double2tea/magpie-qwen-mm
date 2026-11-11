@@ -43,7 +43,7 @@ export async function startServer({ listenPort = port } = {}) {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       return response.end(readFileSync(htmlFile, "utf8").replace("__FORM_TOKEN__", token).replace("__PLUGIN_VERSION__", version));
     }
-    if (request.headers["x-qwen-mm-form"] !== token) return send(403, { error: "页面已过期，请重新打开 Qwen MM。" });
+    if (request.headers["x-qwen-mm-form"] !== token) return send(403, { error: "页面已过期，请重新打开 Qwen-MM-Plugins。" });
     try {
       if (request.method === "GET" && path === "/api/settings") return send(200, { ...readSettings(), models: modelChoices() });
       if (request.method === "POST" && path === "/api/models") {

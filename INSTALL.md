@@ -36,7 +36,7 @@ Use one installation method. For a GitHub installation, resolve its actual insta
 magpie qwen-mm provider magpie
 ```
 
-Open the **Qwen MM** page in Magpie and select VL and Omni independently from your own providers/models. The page service listens locally on port `3496`; open it through Magpie. The managed agent configuration is `~/.config/magpie/qwen-mm/config`.
+Open the **Qwen-MM-Plugins** page in Magpie and select VL and Omni independently from your own providers/models. The page service listens locally on port `3496`; open it through Magpie. The managed agent configuration is `~/.config/magpie/qwen-mm/config`.
 
 Provider IDs are specific to your Magpie setup. No provider named `qwen-cn` or `bailian-token-plan` is required for selecting VL and Omni. Provider credentials remain managed in Magpie; do not paste them into this repository, MCP arguments, or logs. The connection command writes Magpie's gateway connection to the managed config; installation does not replace your native upstream API keys.
 
@@ -87,4 +87,4 @@ PYTHONDONTWRITEBYTECODE=1 TMPDIR=/tmp uvx --python 3.13 --from 'qwen-mm-plugins[
 
 The tests use generated media, mocks, and local HTTP fixtures. They require FFmpeg but no API keys, external model calls, or local model downloads. Dependency installation requires network access unless already cached.
 
-中文摘要：先创建 `~/.qwen-mm-plugins`，再克隆到固定本地目录并用绝对路径注册。运行 `magpie qwen-mm provider magpie` 后，在 Qwen MM 页面分别选择自己已有的 VL、Omni 模型。Library → MCP 中手动添加上表三个入口，JSON 路径必须替换成真实绝对路径；语音默认 provider 与 Serper 图片搜索所需密钥需自行配置。
+中文摘要：先创建 `~/.qwen-mm-plugins`，再克隆到固定本地目录并用绝对路径注册。运行 `magpie qwen-mm provider magpie` 后，在 Qwen-MM-Plugins 页面分别选择自己已有的 VL、Omni 模型。Library → MCP 中手动添加上表三个入口，JSON 路径必须替换成真实绝对路径；语音默认 provider 与 Serper 图片搜索所需密钥需自行配置。

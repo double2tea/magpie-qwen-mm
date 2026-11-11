@@ -1,4 +1,4 @@
-# Magpie Qwen MM
+# Qwen-MM-Plugins
 
 [![Tests](https://github.com/double2tea/magpie-qwen-mm/actions/workflows/test.yml/badge.svg)](https://github.com/double2tea/magpie-qwen-mm/actions/workflows/test.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
@@ -44,7 +44,7 @@ magpie qwen-mm provider magpie
 
 Use one installation method. If switching methods, remove the old registration through Magpie first so two copies do not compete for the same Agent ID.
 
-Open **Magpie → Qwen MM**, then select models from your own configured providers. Model IDs in examples are installation-specific: `google/gemini-3.8-flash`, `qwen-cn/qwen3.8-omni-flash` and `bailian-token-plan/...` work only if you created those provider IDs and have access to those models.
+Open **Magpie → Qwen-MM-Plugins**, then select models from your own configured providers. Model IDs in examples are installation-specific: `google/gemini-3.8-flash`, `qwen-cn/qwen3.8-omni-flash` and `bailian-token-plan/...` work only if you created those provider IDs and have access to those models.
 
 Installing the plugin does **not** automatically create providers, copy credentials, register MCP servers, change default models, or modify Skills. See [INSTALL.md](INSTALL.md) for MCP configuration and clean-install checks.
 
