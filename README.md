@@ -7,7 +7,7 @@ A community [Magpie](https://github.com/yetone/magpie) plugin for [Qwen-MM-Plugi
 
 **中文：** 在 Magpie 中独立管理 VL／Omni，通过网关接入普通搜索、ASR 和 TTS。设置页支持独立保存、重启后继续保存和未保存选择恢复。原版 Qwen-MM-Plugins 在磁盘上保持不变，适配只作用于包装器进程。
 
-This is an independent community plugin, not an official Magpie or Qwen release. Version: **0.3.2**.
+This is an independent community plugin, not an official Magpie or Qwen release. Version: **0.3.3**.
 
 ## What it provides
 

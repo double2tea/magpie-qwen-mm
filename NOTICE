@@ -15,3 +15,8 @@ Runtime integration:
 The repository contains no upstream model weights, account credentials, or
 user configuration backups. Third-party runtime dependencies retain their own
 licenses.
+
+The Qwen symbol in page/icon.svg is copied unchanged from
+https://github.com/QwenLM/qwen-mm-plugins-hub/blob/main/public/favicon.svg
+Apache-2.0. The Qwen name and mark remain trademarks of their owners; this
+copy identifies compatibility and does not imply endorsement.
