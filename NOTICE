@@ -1,0 +1,17 @@
+Magpie Qwen MM
+Copyright 2026 double2tea
+
+An independent community integration for Magpie and Qwen-MM-Plugins.
+This project is not affiliated with or endorsed by the Magpie or Qwen maintainers.
+
+Runtime integration:
+- Qwen-MM-Plugins: https://github.com/QwenLM/Qwen-MM-Plugins
+  Licensed under Apache-2.0 by its respective copyright holders.
+  The upstream package is installed separately, remains unmodified on disk,
+  and is adapted within the wrapper process at runtime.
+- Magpie: https://github.com/yetone/magpie
+  Installed separately. This project uses its public Agent and plugin interfaces.
+
+The repository contains no upstream model weights, account credentials, or
+user configuration backups. Third-party runtime dependencies retain their own
+licenses.

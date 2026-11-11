@@ -1,0 +1,73 @@
+{
+  "name": "magpie-agent-qwen-mm",
+  "version": "0.3.2",
+  "description": "Manage Qwen MM models, search and speech through Magpie",
+  "type": "module",
+  "files": [
+    "qwen-mm.agent.js",
+    "index.mjs",
+    "server.mjs",
+    "settings.mjs",
+    "page",
+    "qwen_mm_gateway.py",
+    "README.md",
+    "qwen-mm",
+    "qwen_mm_audio.py",
+    "qwen_mm_search.py",
+    "LICENSE",
+    "NOTICE",
+    "INSTALL.md"
+  ],
+  "magpie": {
+    "agent": "./qwen-mm.agent.js",
+    "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTUiIGZpbGw9IiM2MTU1ZjUiLz48cGF0aCBkPSJNMjAgMThoMjR2MjJIMjB6IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjQiLz48cGF0aCBkPSJtNDQgMjYgMTAtNnYyMGwtMTAtNk0yNyA0OGgxMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48L3N2Zz4=",
+    "page": {
+      "title": "Qwen MM",
+      "file": "page/index.html",
+      "service": {
+        "port": 3496
+      },
+      "icon": "icon.svg"
+    },
+    "actions": [
+      {
+        "id": "models",
+        "menu": "agent",
+        "title": "Qwen MM models",
+        "titles": {
+          "zh": "Qwen MM 模型"
+        }
+      }
+    ],
+    "name": "Qwen MM",
+    "summary": {
+      "en": "Independent VL and Omni models, media adapters, search and speech through Magpie.",
+      "zh": "独立管理 VL 与 Omni 模型，通过 Magpie 接入音视频、搜索和语音工具。"
+    }
+  },
+  "main": "./index.mjs",
+  "license": "Apache-2.0",
+  "author": "double2tea",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/double2tea/magpie-qwen-mm.git"
+  },
+  "homepage": "https://github.com/double2tea/magpie-qwen-mm#readme",
+  "bugs": {
+    "url": "https://github.com/double2tea/magpie-qwen-mm/issues"
+  },
+  "keywords": [
+    "magpie-plugin",
+    "magpie",
+    "qwen",
+    "multimodal",
+    "mcp",
+    "speech"
+  ],
+  "scripts": {
+    "test": "node --test settings.test.mjs server.test.mjs page.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="qwen-mm-form" content="__FORM_TOKEN__"><title>Qwen MM</title>
+<style>
+:root{color-scheme:light dark;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:light-dark(#fafafa,#18181b);color:light-dark(#242427,#f1f1f4)}
+*{box-sizing:border-box}body{margin:0}main{max-width:720px;margin:0 auto;padding:40px 24px}header{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}h1{font-size:24px;margin:0}.version{font-size:12px;font-weight:400;color:light-dark(#76767e,#a1a1ac);margin-left:8px}p{line-height:1.6;color:light-dark(#64646c,#aaaab5)}.model-card{background:light-dark(#fff,#232327);border:1px solid light-dark(#e3e3e8,#39393f);border-radius:12px;padding:22px;margin:16px 0}label{display:block;font-weight:600;font-size:16px;margin-bottom:5px}.model-card p{margin:0 0 16px}select{width:100%;padding:11px 12px;font:inherit;border:1px solid light-dark(#c8c8d0,#555560);border-radius:7px;background:light-dark(#fff,#1b1b20);color:inherit}button{font:inherit;padding:9px 16px;border:0;border-radius:7px;background:#6155f5;color:#fff;cursor:pointer}button:disabled{opacity:.5;cursor:default}.actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px}.feedback{font-size:13px;line-height:1.5}header button{background:light-dark(#eaeaf0,#35353d);color:inherit}#status{margin-bottom:20px}.error{color:light-dark(#a52a24,#ffaaa3)}footer{font-size:12px;margin-top:24px;color:light-dark(#76767e,#a1a1ac);line-height:1.7}@media(max-width:480px){main{padding:24px 16px}.model-card{padding:18px}}
+</style>
+</head>
+<body><main>
+<header><h1>Qwen MM <span class="version">v__PLUGIN_VERSION__</span></h1><button id="refresh" type="button">刷新</button></header>
+<p id="status" role="status">正在读取配置…</p>
+<section class="model-card" id="vl-form"><label for="vl">VL 模型</label><p>图片理解、视频抽帧与空间分析</p><select id="vl" name="vl" disabled></select><div class="actions"><span class="feedback" id="vl-feedback" role="status"></span><button type="button" disabled>保存 VL</button></div></section>
+<section class="model-card" id="omni-form"><label for="omni">Omni 模型</label><p>语音转写与音视频联合理解</p><select id="omni" name="omni" disabled></select><p id="omni-warning" class="error" role="status" hidden></p><div class="actions"><span class="feedback" id="omni-feedback" role="status"></span><button type="button" disabled>保存 Omni</button></div></section>
+<footer>请求通过 Magpie，费用按所选供应商计费。模型需要支持对应输入。接入后，普通搜索与语音也经过 Magpie；以图搜图保留原服务商。</footer>
+</main>
+<script>
+const token = document.querySelector('meta[name="qwen-mm-form"]').content;
+const restored = new URLSearchParams(location.hash.slice(1));
+if (restored.size) location.hash = '';
+let saved = {};
+const saving = new Set();
+
+function reloadWithChoices() {
+  const pending = new URLSearchParams();
+  for (const key of ['vl', 'omni']) {
+    const value = document.getElementById(key).value;
+    if (value) pending.set(key, value);
+  }
+  location.hash = pending.toString();
+  location.reload();
+}
+
+async function request(path, body) {
+  const response = await fetch(path, {
+    method: body ? 'POST' : 'GET',
+    headers: {'X-Qwen-MM-Form': token, ...(body ? {'Content-Type': 'application/json'} : {})},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.error);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+function markDirty(key) {
+  const card = document.getElementById(key + '-form');
+  const value = card.querySelector('select').value;
+  const warning = key === 'omni' ? (saved.models?.find(model => model.id === value)?.omniWarning || (value === saved.omni ? saved.omniWarning : '') || '') : '';
+  card.querySelector('button').disabled = saving.has(key) || !saved.connected || value === saved[key] || Boolean(warning);
+  if (key === 'omni') {
+    const note = document.getElementById('omni-warning');
+    note.textContent = warning;
+    note.hidden = !warning;
+  }
+}
+
+async function load() {
+  const status = document.getElementById('status');
+  try {
+    const data = await request('api/settings');
+    saved = data;
+    status.className = '';
+    status.textContent = data.connected ? '已接入 Magpie · 两个模型独立保存' : '尚未接入，请在 Agent 页面打开 Qwen MM。';
+    for (const key of ['vl', 'omni']) {
+      const select = document.getElementById(key);
+      select.replaceChildren();
+      const choices = [...data.models];
+      if (data[key] && !choices.some(model => model.id === data[key])) choices.unshift({id: data[key], name: data[key] + '（当前配置）'});
+      if (!data[key]) choices.unshift({id: '', name: '请选择模型'});
+      for (const model of choices) {
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.textContent = model.name;
+        select.append(option);
+      }
+      const pending = restored.get(key);
+      const recover = pending && data.models.some(model => model.id === pending);
+      select.value = recover ? pending : data[key];
+      restored.delete(key);
+      select.disabled = !data.connected || !data.models.length;
+      markDirty(key);
+      const feedback = document.getElementById(key + '-feedback');
+      feedback.className = 'feedback';
+      feedback.textContent = recover && pending !== data[key] ? '已恢复未保存的选择，请保存' : '';
+    }
+  } catch (error) {
+    if (error.status === 403) return reloadWithChoices();
+    status.className = 'error';
+    status.textContent = error.message;
+    for (const node of document.querySelectorAll('select,.model-card button')) node.disabled = true;
+  }
+}
+
+for (const key of ['vl', 'omni']) {
+  const card = document.getElementById(key + '-form');
+  card.querySelector('select').addEventListener('change', () => {
+    markDirty(key);
+    document.getElementById(key + '-feedback').textContent = '';
+  });
+  card.querySelector('button').addEventListener('click', async () => {
+    const button = card.querySelector('button');
+    const feedback = document.getElementById(key + '-feedback');
+    saving.add(key);
+    button.disabled = true;
+    feedback.className = 'feedback';
+    feedback.textContent = '保存中…';
+    try {
+      const data = await request('api/models', {[key]: card.querySelector('select').value});
+      saved[key] = data[key];
+      saved.connected = data.connected;
+      if (key === 'omni') saved.omniWarning = data.omniWarning;
+      feedback.textContent = '已保存，下次调用生效';
+      markDirty(key);
+    } catch (error) {
+      if (error.status === 403) return reloadWithChoices();
+      feedback.className = 'feedback error';
+      feedback.textContent = error.message;
+    } finally {
+      saving.delete(key);
+      markDirty(key);
+    }
+  });
+}
+document.getElementById('refresh').addEventListener('click', load);
+load();
+</script></body></html>
