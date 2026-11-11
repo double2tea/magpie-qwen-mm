@@ -61,7 +61,7 @@ export function saveModels(update, file = configFile, allowed = modelChoices()) 
   }
   if (update.omni && omniWarning(update.omni)) throw new Error(omniWarning(update.omni));
   const { text, values } = readConfig(file);
-  if (!values.DASHSCOPE_BASE_URL || !values.DASHSCOPE_API_KEY) throw new Error("请先在 Agent 页面接入 Qwen-MM-Plugins。");
+  if (!values.DASHSCOPE_BASE_URL || !values.DASHSCOPE_API_KEY) throw new Error("请先在 Agent 页面接入 magpie-agent-qwen-mm-plugins。");
   const pending = new Map(Object.entries(update).map(([key, value]) => [modelKeys[key], value]));
   const seen = new Set();
   const lines = text.split(/\r?\n/).map(line => {

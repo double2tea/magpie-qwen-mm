@@ -1,4 +1,4 @@
-# Qwen-MM-Plugins
+# magpie-agent-qwen-mm-plugins
 
 [![Tests](https://github.com/double2tea/magpie-qwen-mm/actions/workflows/test.yml/badge.svg)](https://github.com/double2tea/magpie-qwen-mm/actions/workflows/test.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
@@ -7,7 +7,7 @@ A community [Magpie](https://github.com/yetone/magpie) plugin for [Qwen-MM-Plugi
 
 **中文：** 在 Magpie 中独立管理 VL／Omni，通过网关接入普通搜索、ASR 和 TTS。设置页支持独立保存、重启后继续保存和未保存选择恢复。原版 Qwen-MM-Plugins 在磁盘上保持不变，适配只作用于包装器进程。
 
-This is an independent community plugin, not an official Magpie or Qwen release. Version: **0.3.4**.
+This is an independent community plugin, not an official Magpie or Qwen release. Version: **0.3.5**.
 
 ## What it provides
 
@@ -44,7 +44,7 @@ magpie qwen-mm provider magpie
 
 Use one installation method. If switching methods, remove the old registration through Magpie first so two copies do not compete for the same Agent ID.
 
-Open **Magpie → Qwen-MM-Plugins**, then select models from your own configured providers. Model IDs in examples are installation-specific: `google/gemini-3.8-flash`, `qwen-cn/qwen3.8-omni-flash` and `bailian-token-plan/...` work only if you created those provider IDs and have access to those models.
+Open **Magpie → magpie-agent-qwen-mm-plugins**, then select models from your own configured providers. Model IDs in examples are installation-specific: `google/gemini-3.8-flash`, `qwen-cn/qwen3.8-omni-flash` and `bailian-token-plan/...` work only if you created those provider IDs and have access to those models.
 
 Installing the plugin does **not** automatically create providers, copy credentials, register MCP servers, change default models, or modify Skills. See [INSTALL.md](INSTALL.md) for MCP configuration and clean-install checks.
 
