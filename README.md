@@ -110,7 +110,7 @@ Verified on two macOS installations:
 - Registered web extraction and video-spatio startup.
 - Local OpenAI-compatible speech forwarding with already cached MLX models.
 
-**Known channel limitation:** `agy-cli/gemini-3.8-flash` recognized adapted video frames in the tested setup but did not receive audio. The adapter reports an explicit error for audio on this channel; the page warns and prevents newly saving it as Omni. Existing selections remain visible and are not automatically replaced. The exact upstream cause is under investigation. This is not a statement about Gemini's general audio capability.
+**Known channel limitation:** `agy-cli/gemini-3.8-flash` recognized adapted video frames in the tested setup but did not receive audio. The adapter reports an explicit error for audio on this channel; the page warns and prevents newly saving it as Omni. Existing selections remain visible and are not automatically replaced. The inspected Anthropic bridge converts audio files to text placeholders, and agy ACP 1.5.3 advertises `audio: false`. See the [root-cause investigation](docs/agy-audio.md) for versioned evidence and the upstream changes needed. This is not a statement about Gemini's general audio capability.
 
 Not exhaustively verified: long videos, dense motion, precise frame/word timing, every upstream tool, every provider, or other operating systems. Reverse image search dependencies and handler preservation are tested; uploading to Serper Lens is not part of the offline test suite.
 
