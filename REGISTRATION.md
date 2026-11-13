@@ -34,3 +34,11 @@ The configuration page manages separate VL/Omni models. The wrapper adapts its o
 Agy CLI remains available for visual use but is not a supported Omni audio route. Long-form media and exact temporal alignment are not universally validated. CI validates isolated fixtures without real credentials; successful tests do not certify every third-party model or operating system.
 
 Future simplification should use a supported Magpie lifecycle API to offer MCP registration with explicit scope and reversible removal. The current plugin does not silently rewrite Library entries or install system dependencies merely to qualify for discovery.
+
+## Requesting curated inclusion
+
+Magpie also reads a maintained community catalog from [magpie-community/plugins](https://github.com/magpie-community/plugins). Its [README](https://github.com/magpie-community/plugins#write-your-own) describes supported plugin types. This is distinct from topic-based discovery; there is no promise of automatic review or inclusion.
+
+A reasonable next step is to ask those maintainers whether an externally hosted Agent/page wrapper belongs in their catalog, linking a tagged release, license, tests, source and manual installation boundaries. Do not describe inclusion as official Qwen endorsement or a security audit. Do not open a PR adding guessed catalog fields before maintainers confirm the expected format.
+
+Before submitting, verify a fresh installation and removal on an isolated Magpie profile, preserve the explicit dependency/MCP opt-in, and disclose the settings service on loopback port 3496 and upstream package pin. The read-only `setup.mjs --check` assistant reduces path-copy errors but does not claim one-click installation.

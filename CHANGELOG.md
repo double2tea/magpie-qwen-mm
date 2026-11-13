@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.7 — 2026-11-13
+
+- Add a read-only setup assistant that outputs installation-specific MCP arguments and checks available dependencies.
+- Document the maintained community catalog and its review boundaries.
+- Add three tests for paths with spaces, dependency checks and a configuration-free plan.
+
 ## 0.3.6 — 2026-11-13
 
 - Finalize the exact known Bailian streaming placeholder sizes in downloaded PCM WAV artifacts. Files no longer appear approximately 12.4 hours long when the audio is only seconds long.

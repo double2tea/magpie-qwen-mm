@@ -42,6 +42,15 @@ Provider IDs are specific to your Magpie setup. No provider named `qwen-cn` or `
 
 ## Add the MCP servers
 
+Generate the exact entries for the installed directory, without writing any configuration:
+
+```sh
+node /actual/plugin/path/setup.mjs --check
+```
+
+The result contains names, commands and argument arrays ready to copy into Library → MCP. It checks executable availability on the current PATH and prints installed Node/Python versions. It does not install dependencies, create environments, download models, overwrite existing MCP entries or enable Agents. Magpie's GUI process may have a different PATH; a shell check is not a full runtime compatibility test. Review the requirements above (including Python 3.13 and Node 22+) against the reported versions.
+
+
 In **Magpie → Library → MCP**, manually add these three stdio entries. Enable the ones you need for your agent:
 
 | Suggested name | Final argument (`ENTRY`) |

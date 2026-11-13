@@ -28,7 +28,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes ffmpeg
       - name: Test JavaScript
-        run: node --test settings.test.mjs server.test.mjs page.test.mjs
+        run: node --test settings.test.mjs server.test.mjs page.test.mjs setup.test.mjs
       - name: Test Python
         run: >-
           uvx --python 3.13
