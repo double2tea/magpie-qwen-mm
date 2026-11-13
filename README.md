@@ -7,7 +7,7 @@ A community [Magpie](https://github.com/yetone/magpie) plugin for [Qwen-MM-Plugi
 
 **中文：** 在 Magpie 中独立管理 VL／Omni，通过网关接入普通搜索、ASR 和 TTS。设置页支持独立保存、重启后继续保存和未保存选择恢复。原版 Qwen-MM-Plugins 在磁盘上保持不变，适配只作用于包装器进程。
 
-This is an independent community plugin, not an official Magpie or Qwen release. Version: **0.3.5**.
+This is an independent community plugin, not an official Magpie or Qwen release. Version: **0.3.6**.
 
 ## What it provides
 
@@ -132,3 +132,7 @@ Bug reports should include plugin/Magpie versions, provider/model ID, input moda
 The GitHub repository uses the **`magpie-plugin`** topic and Magpie package metadata so it can be found by the [official plugin discovery mechanism](https://github.com/yetone/magpie/blob/main/docs/reference.md). Listing does not imply official review or endorsement; discovery refresh/indexing can take time.
 
 Licensed under [Apache-2.0](LICENSE). See [NOTICE](NOTICE) for upstream attribution.
+
+## Registration and release status
+
+See [REGISTRATION.md](REGISTRATION.md) for Magpie discovery requirements and installation boundaries, and [CHANGELOG.md](CHANGELOG.md) for changes. Version 0.3.6 finalizes the known Bailian WAV placeholder lengths without changing PCM samples.

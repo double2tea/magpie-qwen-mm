@@ -1,6 +1,6 @@
 {
   "name": "magpie-agent-qwen-mm-plugins",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Manage Qwen-MM-Plugins models, search and speech through Magpie",
   "type": "module",
   "files": [
@@ -16,7 +16,9 @@
     "qwen_mm_search.py",
     "LICENSE",
     "NOTICE",
-    "INSTALL.md"
+    "INSTALL.md",
+    "CHANGELOG.md",
+    "REGISTRATION.md"
   ],
   "magpie": {
     "agent": "./qwen-mm.agent.js",

@@ -1,12 +1,32 @@
+import io
 import json
 from pathlib import Path
+import struct
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
+import wave
 
 import qwen_mm_audio as audio
 
 CONFIG = {'DASHSCOPE_BASE_URL': 'http://127.0.0.1:3425/v1', 'DASHSCOPE_API_KEY': 'gateway-test-key'}
+
+
+def make_wav(pcm=b'\x01\x00' * 2400, rate=24000):
+    buffer = io.BytesIO()
+    with wave.open(buffer, 'wb') as writer:
+        writer.setnchannels(1)
+        writer.setsampwidth(2)
+        writer.setframerate(rate)
+        writer.writeframes(pcm)
+    return buffer.getvalue()
+
+
+def placeholder_wav(pcm=b'\x01\x00' * 2400):
+    data = bytearray(make_wav(pcm))
+    struct.pack_into('<I', data, 4, 0x7FFFFFBF)
+    struct.pack_into('<I', data, 40, 0x7FFFFF9B)
+    return bytes(data)
 
 
 class AudioTests(unittest.TestCase):
@@ -53,6 +73,39 @@ class AudioTests(unittest.TestCase):
         with patch.object(audio, 'post', return_value=(b'{"error":"failed"}', 'application/json')):
             with self.assertRaisesRegex(ValueError, 'JSON'):
                 audio.synthesize(CONFIG, 'hello', 'mlx-audio-tools/local-tts', 'default', 'wav')
+
+    def test_bailian_download_finalizes_lengths_without_changing_pcm(self):
+        original = placeholder_wav()
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = original
+        response.__enter__.return_value.headers = {'Content-Type': 'audio/wav'}
+        with patch.object(audio, 'native', return_value={'output': {'audio': {'url': 'https://audio.example/out.wav'}}}), patch.object(audio, 'urlopen', return_value=response):
+            result = audio.synthesize(CONFIG, 'hello', audio.TTS_MODEL, 'longanhuan_v3.6', 'wav')
+        self.assertEqual(result[44:], original[44:])
+        self.assertEqual(struct.unpack_from('<I', result, 4)[0], len(result) - 8)
+        self.assertEqual(struct.unpack_from('<I', result, 40)[0], len(result) - 44)
+        with wave.open(io.BytesIO(result)) as reader:
+            self.assertEqual(reader.getnframes(), 2400)
+            self.assertAlmostEqual(reader.getnframes() / reader.getframerate(), 0.1)
+
+    def test_finalization_leaves_valid_and_unrecognized_headers_unchanged(self):
+        valid = make_wav()
+        truncated = valid[:-2]
+        other_placeholder = bytearray(valid)
+        struct.pack_into('<I', other_placeholder, 40, 0xFFFFFFFF)
+        for original in (valid, truncated, bytes(other_placeholder), b'RIFFshort', b'not wav'):
+            with self.subTest(original=original[:44]):
+                self.assertEqual(audio.finalize_wav(original), original)
+
+    def test_placeholder_wav_requires_complete_pcm_frames(self):
+        for original in (placeholder_wav()[:-1], placeholder_wav(b'')):
+            with self.assertRaisesRegex(ValueError, 'incomplete PCM frame'):
+                audio.finalize_wav(original)
+
+    def test_other_providers_keep_their_original_bytes(self):
+        original = placeholder_wav()
+        with patch.object(audio, 'post', return_value=(original, 'audio/wav')):
+            self.assertEqual(audio.synthesize(CONFIG, 'hello', 'mlx-audio-tools/local-tts', 'default', 'wav'), original)
 
     def test_speech_rejects_successful_http_error_pages(self):
         for content, content_type in [(b'<html>Error</html>', 'text/html'),

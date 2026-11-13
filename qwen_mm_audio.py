@@ -6,6 +6,7 @@ import json
 import math
 from pathlib import Path
 import re
+import struct
 import tempfile
 from types import SimpleNamespace
 from typing import Literal
@@ -81,6 +82,21 @@ def transcribe_chunk(config, path, model, language, enable_itn):
     return json.loads(content)['text']
 
 
+def finalize_wav(data):
+    # Bailian TTS leaves streaming placeholder lengths in the finite OSS WAV.
+    if (len(data) >= 44 and data[:4] == b'RIFF' and data[8:12] == b'WAVE'
+            and data[12:20] == b'fmt \x10\x00\x00\x00' and data[20:22] == b'\x01\x00'
+            and data[36:40] == b'data'
+            and struct.unpack_from('<I', data, 4)[0] == 0x7FFFFFBF
+            and struct.unpack_from('<I', data, 40)[0] == 0x7FFFFF9B):
+        actual = len(data) - 44
+        alignment = struct.unpack_from('<H', data, 32)[0]
+        if not actual or not alignment or actual % alignment:
+            raise ValueError('Speech provider returned an incomplete PCM frame in WAV audio')
+        return data[:4] + struct.pack('<I', len(data) - 8) + data[8:40] + struct.pack('<I', actual) + data[44:]
+    return data
+
+
 def synthesize(config, text, model, voice, format):
     provider, name = split_model(model)
     if provider in ('bailian-token-plan', 'qwen-cn'):
@@ -104,7 +120,7 @@ def synthesize(config, text, model, voice, format):
         raise ValueError('Speech provider returned JSON instead of audio')
     if not (media_type.startswith('audio/') or media_type in ('application/octet-stream', 'binary/octet-stream')):
         raise ValueError('Speech provider returned non-audio content: ' + (media_type or 'missing Content-Type'))
-    return data
+    return finalize_wav(data) if format == 'wav' and provider in ('bailian-token-plan', 'qwen-cn') else data
 
 
 def install(settings):
