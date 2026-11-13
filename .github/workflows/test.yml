@@ -28,9 +28,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes ffmpeg
       - name: Test JavaScript
-        run: node --test settings.test.mjs server.test.mjs page.test.mjs setup.test.mjs
+        run: node --test settings.test.mjs server.test.mjs page.test.mjs tools.test.mjs setup.test.mjs
       - name: Test Python
         run: >-
           uvx --python 3.13
           --from 'qwen-mm-plugins[api,search,video-spatio] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-video-spatio-v1.1.0'
-          python -m unittest -q test_qwen_mm_gateway test_qwen_mm_audio test_qwen_mm_search
+          python -m unittest -q test_qwen_mm_gateway test_qwen_mm_audio test_qwen_mm_search test_tool_worker

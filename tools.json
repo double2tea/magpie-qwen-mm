@@ -1,0 +1,988 @@
+[
+  {
+    "entry": "video-spatio",
+    "name": "assess_reachable",
+    "description": "OFFLINE manipulation-prep judgment: given a target and the accumulated scene (past trajectory /\n\nmemory), decide whether the agent can reach a position from which it can OPERATE the target —\nWITHOUT any env step. Pure geometry + label heuristics, no VLM. Three outcomes: `reachable_now` (an\nobserved viewpoint is already within max_reach_m), `reachable_after_move` (target grounded but too\nfar → single-leg turn+go_forward plan + distance to close), or `target_not_grounded` (never observed\n→ defer to assess_coverage / plan_exploration to FIND it first). Scope: judges only whether an\noperable vantage is reachable, NOT whether the manipulation succeeds. Returns offline_assessment\n(evidence_sufficiency / recommended_action / specific_data_calls / fallback_answer_hint) in the same\nshape as plan_exploration.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "`scene` from build_scene."
+        },
+        "scene_file": {
+          "description": "Path to scene JSON file.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Object to reach / operate on (e.g. 'cup', 'door handle', 'drawer').",
+          "type": "string"
+        },
+        "max_reach_m": {
+          "default": 1.0,
+          "description": "Operable reach in meters: target counts as 'operable' if some observed viewpoint is\nwithin this distance.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "build_scene",
+    "description": "Assemble an instance-level 3D scene from objects YOU (the model) grounded + depth-estimated in each\n\nframe — NO perception model runs here, it is pure geometry. Returns a `scene` JSON (instances +\ncamera poses + intrinsics + frame paths) that visualize_bev / triangulate / object_world_motion /\ncalibrate_scale / render_scene_views take back as their `scene` argument. Geometry is a COARSE\nscaffold (depth_m is your estimate), not metric-accurate.",
+    "inputSchema": {
+      "properties": {
+        "objects_by_frame": {
+          "description": "Per-frame object lists (outer-model perception). One inner list per frame,\naligned to `frames`. Each object: {label:str, bbox:[x1,y1,x2,y2] (x-first, top-left origin;\nunits selected by bbox_format), depth_m:float (positive distance in meters from the camera)}.",
+          "items": {
+            "items": {
+              "properties": {
+                "label": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "bbox": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 4,
+                  "minItems": 4,
+                  "type": "array"
+                },
+                "depth_m": {
+                  "exclusiveMinimum": 0,
+                  "type": "number"
+                }
+              },
+              "required": [
+                "label",
+                "bbox",
+                "depth_m"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "frames": {
+          "description": "Absolute paths to the RGB frame images, aligned 1:1 with objects_by_frame (used for\nimage size + carried for render tools).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "frame_indices": {
+          "description": "Original video frame indices per frame (default: 0..N-1).",
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "is_video": {
+          "default": true,
+          "description": "Whether frames come from a video (vs still images).",
+          "type": "boolean"
+        },
+        "camera_motions": {
+          "description": "Per adjacent-frame camera motion (frame i→i+1), YOUR estimate. One entry per gap\n= len(frames)-1. Each: {yaw_deg:+right/-left horizontal turn, forward_m:+forward/-back\nplanar meters, right_m:+right/-left planar meters, pitch_deg?:+up/-down tilt (recorded, NOT\nused in c2w — BEV is ground-plane 3-DoF)}. Omit → identity cameras (single-view / static).",
+          "items": {
+            "properties": {
+              "yaw_deg": {
+                "default": 0.0,
+                "type": "number"
+              },
+              "forward_m": {
+                "default": 0.0,
+                "type": "number"
+              },
+              "right_m": {
+                "default": 0.0,
+                "type": "number"
+              },
+              "pitch_deg": {
+                "default": 0.0,
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "bbox_format": {
+          "default": "normalized_1000",
+          "description": "Coordinate units for every box: normalized_1000 (default), normalized (0..1),\nor pixels. Units are explicit, independent of image resolution.",
+          "enum": [
+            "normalized_1000",
+            "normalized",
+            "pixels"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "objects_by_frame",
+        "frames"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "calibrate_scale",
+    "description": "Refine absolute metric scale from a target's KNOWN real size: returns scale_factor = known_m /\n\nobserved_m. Multiply reconstructed depths/distances by it to correct absolute meters (monocular\ndepth_m alone gets absolute distance wrong). Needs a `scene` from build_scene.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "The `scene` object from build_scene (JSON object or JSON string)."
+        },
+        "scene_file": {
+          "description": "Path to a JSON file holding the scene (alternative to `scene`).",
+          "type": "string"
+        },
+        "target": {
+          "description": "Label of the object whose real-world size is known.",
+          "type": "string"
+        },
+        "known_size_m": {
+          "description": "The object's known real size in meters (e.g. a chair ~0.5 m wide).",
+          "type": "number"
+        },
+        "dim": {
+          "default": "width",
+          "description": "Which dimension known_size_m refers to: 'width' or 'height'.",
+          "type": "string"
+        },
+        "frame": {
+          "description": "Frame to measure the observed size in (default: first available).",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "target",
+        "known_size_m"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "camera_motion",
+    "description": "How the CAMERA moved between two frames, from the scene's camera poses (pure geometry): translation\n\n(meters), rotation (yaw/pitch/roll deg), total rotation, and dominant direction (e.g. yaw-left,\nmoved-forward). Answers 'which way did the camera move/turn?'. Needs a `scene`.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "The `scene` object from build_scene (JSON object or JSON string)."
+        },
+        "scene_file": {
+          "description": "Path to a JSON file holding the scene (alternative to `scene`).",
+          "type": "string"
+        },
+        "frame_i": {
+          "description": "First frame index.",
+          "type": "integer"
+        },
+        "frame_j": {
+          "description": "Second frame index.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "frame_i",
+        "frame_j"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "count_objects",
+    "description": "Count objects from the scene's grounded instances (not a bare VLM guess). With `frame` → count in\n\nthat frame; without → count UNIQUE physical objects across all frames with BEV dedup (avoids double-\ncounting the same object seen in multiple frames). Optionally filter by `label`.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "The `scene` object from build_scene (JSON object or JSON string)."
+        },
+        "scene_file": {
+          "description": "Path to a JSON file holding the scene.",
+          "type": "string"
+        },
+        "label": {
+          "description": "Only count objects of this label (default: all).",
+          "type": "string"
+        },
+        "frame": {
+          "description": "Count in this single frame. If omitted, counts unique objects across ALL frames (BEV-\ndeduplicated).",
+          "type": "integer"
+        },
+        "dup_threshold": {
+          "default": 0.5,
+          "description": "BEV dedup distance (meters) for across-frames counting.",
+          "type": "number"
+        },
+        "model": {
+          "description": "Override the VLM model (default: from env).",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "assess_coverage",
+    "description": "Report how much of the world has been observed and whether that is sufficient to answer the current\n\nquestion. Pure geometry + label heuristics — no VLM. Returns: coverage_deg (total angular sweep),\nunobserved_sectors (world-heading gaps), candidate_gateways (door/corridor/opening items with\nheadings from the reference camera), known_rooms (guessed from seen labels), target_hint (likely\nrooms for `target` from a small prior), and sufficient_for_target (true if target is already in\nscene, else false).",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "`scene` from build_scene."
+        },
+        "scene_file": {
+          "description": "Path to scene JSON file.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Optional: object label we want to find. If given, the tool also reports whether the\naccumulated scene is enough (target present) or hints where it likely is (via room prior).",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "match_entities",
+    "description": "Cross-frame identity: group all sightings of an object across frames/views into unique physical\n\nentities ('match_across_views'), or just count distinct objects ('deduplicate'). Use to avoid\ndouble-counting the same object seen from multiple frames. Needs a `scene`.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "The `scene` object from build_scene (JSON object or JSON string)."
+        },
+        "scene_file": {
+          "description": "Path to a JSON file holding the scene.",
+          "type": "string"
+        },
+        "op": {
+          "default": "match_across_views",
+          "description": "'match_across_views' (group sightings into entities) or 'deduplicate' (count distinct\nphysical objects).",
+          "type": "string"
+        },
+        "label": {
+          "description": "Restrict to this label (default: all).",
+          "type": "string"
+        },
+        "match_dist_m": {
+          "default": 0.6,
+          "description": "BEV distance (meters) under which two sightings are the same object.",
+          "type": "number"
+        },
+        "model": {
+          "description": "Override the VLM model (default: from env).",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "mobile_manip",
+    "description": "Embodied / mobile-manipulation over the scene. Two families of ops:   Observation:\n\n`track_object_trajectory` (cross-frame BEV path), `check_object_in_view`, `suggest_approach`\n(staging), `search_object_across_frames`, `reachability`.   Action-planning (pure geometry, no VLM):\n`plan_navigation` gives a single-leg turn+forward sequence to a visible target; `plan_movement`\ngates that behind a reachability check; `plan_active_search` handles the target-not-visible case —\nfrom the camera trajectory, decide the next locomotion move (turn to an unobserved side, or\nadvance). Needs a `scene` from build_scene.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "The `scene` object from build_scene."
+        },
+        "scene_file": {
+          "description": "Path to a JSON file holding the scene.",
+          "type": "string"
+        },
+        "op": {
+          "default": "plan_navigation",
+          "description": "Which routine to run. Observation/grounding: `track_object_trajectory` |\n`check_object_in_view` | `suggest_approach` | `search_object_across_frames` |\n`reachability`. Action planning: `plan_navigation` (single-leg turn+forward),\n`plan_movement` (nav only if not reachable), `plan_active_search` (target NOT in scene →\nsuggest next scan move).",
+          "type": "string"
+        },
+        "target": {
+          "description": "The object to reason about (label or instance id). Required for all ops.",
+          "type": "string"
+        },
+        "frame": {
+          "description": "Frame index for ops that accept one (default: first).",
+          "type": "integer"
+        },
+        "max_reach_m": {
+          "description": "Reachability threshold in meters (reachability / plan_movement).",
+          "type": "number"
+        },
+        "max_moves": {
+          "description": "Max steps to output (plan_active_search, default 3).",
+          "type": "integer"
+        },
+        "model": {
+          "description": "Override VLM model (default: from env). Only affects VLM-backed ops.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "motion",
+    "description": "Two pure-compute modes: (1) motion SEGMENTATION across a clip — pass `frames` to get which\n\nregions/frames contain motion (frame-difference based); (2) trajectory EXTRAPOLATION — pass\n`past_points` to fit and predict `n_future` points. Reason about motion in world/metric terms, not\nraw pixels.",
+    "inputSchema": {
+      "properties": {
+        "frames": {
+          "description": "Paths to frame images, in order — for motion segmentation across the clip.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "motion_threshold": {
+          "description": "Optional motion threshold for segmentation (default: auto).",
+          "type": "number"
+        },
+        "past_points": {
+          "description": "A past 2D/3D track [[x,y(,z)], ...] — when given, extrapolate future points instead\nof segmenting.",
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "n_future": {
+          "default": 3,
+          "description": "Number of future points to extrapolate (predict mode).",
+          "type": "integer"
+        },
+        "order": {
+          "default": 2,
+          "description": "Polynomial fit order for extrapolation (predict mode).",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "object_world_motion",
+    "description": "Motion of `target` in the WORLD frame between two frames, with the camera's own ego-motion REMOVED —\n\ndistinguishes 'the object moved' from 'the camera moved'. Returns displacement_m / direction /\nis_moving / camera_moved_m. Never infer motion from pixel shift; use this. Needs a `scene` from\nbuild_scene.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "The `scene` object from build_scene (JSON object or JSON string)."
+        },
+        "scene_file": {
+          "description": "Path to a JSON file holding the scene (alternative to `scene`).",
+          "type": "string"
+        },
+        "target": {
+          "description": "Label of the object whose world motion to compute.",
+          "type": "string"
+        },
+        "frame_a": {
+          "description": "Start frame (default: first frame where target is present).",
+          "type": "integer"
+        },
+        "frame_b": {
+          "description": "End frame (default: last frame where target is present).",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "orient_facing",
+    "description": "Determine which direction an object is FACING from a single frame — a holistic, majority-voted VLM\n\nread (no reconstruction). Uses the FULL image and votes over several reworded reads to de-bias.\nperspective='egocentric' re-expresses left/right/front/back into the object's own frame.",
+    "inputSchema": {
+      "properties": {
+        "image": {
+          "description": "Path to the frame image to read the object's facing from (use the FULL frame, not a\ncrop).",
+          "type": "string"
+        },
+        "target": {
+          "description": "The object whose facing direction to determine (e.g. 'the person', 'the car').",
+          "type": "string"
+        },
+        "perspective": {
+          "default": "camera",
+          "description": "'camera' = facing as YOU see it; 'egocentric' = re-expressed in the object's own\nframe ('imagine you are X').",
+          "type": "string"
+        },
+        "votes": {
+          "default": 3,
+          "description": "Self-consistency votes: asks the same neutral question N times and majority-votes to de-\nbias. Default 3.",
+          "type": "integer"
+        },
+        "model": {
+          "description": "Override the VLM model (default: from env).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "image",
+        "target"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "plan_exploration",
+    "description": "Given a target and the current scene, decide the next STRUCTURAL exploration move: (a) `spin_scan` —\n\nturn ~360° in place to raise this room's coverage; (b) `traverse_gateway` — head to a door/corridor\npointing into an unobserved sector, then re-observe; (c) `go_forward` — no gateway, no target in\nview; advance to a new vantage; (d) `found` — target already in scene, hand off to plan_navigation.\nPure geometry, no VLM. Complements `plan_active_search` (small local left/right) with structural\nreasoning across rooms.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "`scene` from build_scene."
+        },
+        "scene_file": {
+          "description": "Path to scene JSON file.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Object label we want to find (e.g. 'bed', 'conference room 302').",
+          "type": "string"
+        },
+        "budget_moves": {
+          "default": 3,
+          "description": "Max steps in the returned skill_sequence.",
+          "type": "integer"
+        },
+        "spin_coverage_deg": {
+          "default": 180.0,
+          "description": "If current coverage_deg < this, prefer spin_scan first.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "render_scene_views",
+    "description": "Render the scene's instances as orthographic 2D views (wireframe cuboids) from canonical faces —\n\nDEFAULT front + top(BEV); add left/right only if a task needs more angles. Lets you 'look from\nanother angle' at the reconstructed layout. Needs a `scene` from build_scene.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "The `scene` object from build_scene (JSON object or JSON string)."
+        },
+        "scene_file": {
+          "description": "Path to a JSON file holding the scene (alternative to `scene`).",
+          "type": "string"
+        },
+        "faces": {
+          "default": [
+            "front",
+            "top"
+          ],
+          "description": "Which orthographic faces to render: front / top (=bev) / left / right. Default front+top.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "frame": {
+          "description": "Frame whose instances to render (default: aggregate/available).",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "scene_map",
+    "description": "Structured scene-level views: 'cognitive_map' (grid layout of objects), 'appearance_order' (objects\n\nby first-appearance frame), 'locate_event' (frames where an event/action occurs — temporal\nlocalization), 'diff_frames' (what appeared/disappeared/moved between two frames). Needs a `scene`.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "The `scene` object from build_scene."
+        },
+        "scene_file": {
+          "description": "Path to a JSON file holding the scene.",
+          "type": "string"
+        },
+        "op": {
+          "default": "cognitive_map",
+          "description": "cognitive_map | appearance_order | locate_event | diff_frames",
+          "type": "string"
+        },
+        "frame": {
+          "description": "Frame index (cognitive_map).",
+          "type": "integer"
+        },
+        "grid_size": {
+          "default": 10,
+          "description": "Grid resolution for cognitive_map.",
+          "type": "integer"
+        },
+        "labels": {
+          "description": "Restrict cognitive_map to these labels.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "describe": {
+          "default": false,
+          "description": "cognitive_map: add a VLM description.",
+          "type": "boolean"
+        },
+        "description": {
+          "description": "Event/action to localize (locate_event).",
+          "type": "string"
+        },
+        "frame_a": {
+          "description": "First frame (diff_frames).",
+          "type": "integer"
+        },
+        "frame_b": {
+          "description": "Second frame (diff_frames).",
+          "type": "integer"
+        },
+        "model": {
+          "description": "Override the VLM model (default: from env).",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "select_keyframes",
+    "description": "Pick the most informative frame indices: 'uniform' (evenly spaced), 'motion' (most diverse camera\n\nviewpoints), 'coverage' (frames where a target is best visible), 'covisibility' (frames where\nmultiple objects are co-visible). Needs a `scene` except for 'uniform'.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "The `scene` object from build_scene (needed for motion/coverage/covisibility)."
+        },
+        "scene_file": {
+          "description": "Path to a JSON file holding the scene.",
+          "type": "string"
+        },
+        "strategy": {
+          "default": "motion",
+          "description": "uniform | motion | coverage | covisibility",
+          "type": "string"
+        },
+        "n": {
+          "default": 8,
+          "description": "How many frames to select.",
+          "type": "integer"
+        },
+        "total_frames": {
+          "description": "Total frame count (required for 'uniform').",
+          "type": "integer"
+        },
+        "label": {
+          "description": "Target label (coverage).",
+          "type": "string"
+        },
+        "labels": {
+          "description": "Target labels (covisibility).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "model": {
+          "description": "Override the VLM model (default: from env).",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "triangulate",
+    "description": "Two-view triangulation of `target`'s world position from frames a and b — more accurate than\n\nmonocular depth_m WHEN the camera moved between them. Returns world_xz + triangulation_angle_deg +\nreliable; if angle < 8° the baseline is too small — fall back to depth_m (Pattern A). Needs a\n`scene` from build_scene.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "The `scene` object from build_scene (JSON object or JSON string)."
+        },
+        "scene_file": {
+          "description": "Path to a JSON file holding the scene (alternative to `scene`).",
+          "type": "string"
+        },
+        "target": {
+          "description": "Label of the object to triangulate (must be present in both frames).",
+          "type": "string"
+        },
+        "frame_a": {
+          "description": "First frame index.",
+          "type": "integer"
+        },
+        "frame_b": {
+          "description": "Second frame index (needs real camera baseline vs frame_a).",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "target",
+        "frame_a",
+        "frame_b"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "verify_grounding",
+    "description": "Independently VERIFY a grounding: ask the VLM whether the region in `bbox` really shows `label`. Run\n\nbefore finalizing any distance/relation conclusion — a wrong bbox is the #1 cause of a flipped\nspatial answer. Returns a match verdict + confidence.",
+    "inputSchema": {
+      "properties": {
+        "image": {
+          "description": "Path to the frame image.",
+          "type": "string"
+        },
+        "bbox": {
+          "description": "[x1,y1,x2,y2] region to verify (0-1000 normalized).",
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "label": {
+          "description": "The label the region is claimed to show (e.g. 'chair').",
+          "type": "string"
+        },
+        "model": {
+          "description": "Override the VLM model (default: from env).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "image",
+        "bbox",
+        "label"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "view_reason",
+    "description": "Reason from an OBJECT's viewpoint (not the camera): 'scene_layout' (all objects from viewpoint's\n\nperspective), 'from_viewpoint' (describe targets relative to viewpoint), 'visible_from' (is target\nvisible from viewpoint + direction/distance), 'line_of_sight' (is the view clear or occluded).\nObject-perspective mirrors left/right vs the camera. Needs a `scene`.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "The `scene` object from build_scene."
+        },
+        "scene_file": {
+          "description": "Path to a JSON file holding the scene.",
+          "type": "string"
+        },
+        "op": {
+          "default": "scene_layout",
+          "description": "from_viewpoint | visible_from | scene_layout | line_of_sight",
+          "type": "string"
+        },
+        "frame": {
+          "description": "Frame index to reason in.",
+          "type": "integer"
+        },
+        "viewpoint": {
+          "description": "The object whose perspective to reason from (e.g. 'the person').",
+          "type": "string"
+        },
+        "target": {
+          "description": "Target object (visible_from / line_of_sight).",
+          "type": "string"
+        },
+        "targets": {
+          "description": "Targets to describe (from_viewpoint).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "model": {
+          "description": "Override the VLM model (default: from env).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "frame",
+        "viewpoint"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "video-spatio",
+    "name": "visualize_bev",
+    "description": "Top-down BEV. Preferred: pass `scene` from build_scene + a `viewpoint` — the plot draws a DASHED\n\nforward/right cross-hair with Front/Back/Left/Right quadrant labels centred on that viewpoint\n(camera frame OR virtual viewpoint like 'stand at X facing Y'), so left/right/front/behind is a\ndirect read of which quadrant an object sits in — no manual Pattern-B trig. Also shows camera pitch\nas an annotation (if |pitch|≥20° the BEV forward/back is flagged unreliable). Legacy: raw point\ncloud via points_file / points_b64 still works.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "description": "`scene` object from build_scene (JSON or dict). Preferred input; instances/cameras drive\nthe plot."
+        },
+        "scene_file": {
+          "description": "Path to a JSON file holding the scene (alternative to `scene`).",
+          "type": "string"
+        },
+        "viewpoint": {
+          "description": "Draw a DASHED forward/right cross-hair with Front/Back/Left/Right quadrant labels\ncentred on a viewpoint. {frame:N}=camera frame N; virtual viewpoint =\n{at:[x,z]|label|{frame,label}, facing:label|[x,z]|heading_deg}. For 'facing the OPPOSITE\ndirection of X' questions, use `facing_away:label|[x,z]|heading_deg` (the tool auto-adds\n180°); do NOT try to hand-derive the reverse angle. Turn any 'from X's perspective / left-\nright/front-behind' question into reading the object's quadrant."
+        },
+        "points_file": {
+          "description": "Legacy: .npy 3D point cloud (H,W,3). Prefer `scene` above.",
+          "type": "string"
+        },
+        "points_b64": {
+          "description": "Legacy: base64 numpy array of 3D points.",
+          "type": "string"
+        },
+        "masks_file": {
+          "description": "Legacy: .npy segmentation masks (N,H,W bool).",
+          "type": "string"
+        },
+        "masks_b64": {
+          "description": "Legacy: base64 numpy masks.",
+          "type": "string"
+        },
+        "labels": {
+          "description": "Labels for each mask object (legacy point-cloud path).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "image_size": {
+          "description": "Image dims [H,W] for scaling (legacy).",
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "xlim": {
+          "description": "X-axis limits [min,max] meters (default auto).",
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "zlim": {
+          "description": "Z-axis (depth) limits [min,max] meters (default auto).",
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "resolution": {
+          "default": 0.02,
+          "description": "BEV grid resolution in meters per pixel (legacy path).",
+          "type": "number"
+        },
+        "title": {
+          "default": "Bird's-Eye View",
+          "description": "Title for the BEV plot.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "entry": "search",
+    "name": "image_search",
+    "description": "Reverse image search using an image file path (or a public image URL). Returns similar images\n\nwith their source URLs, titles, and descriptions. Local images require allow_public_upload=true\nand are uploaded to the third-party public host uguu.se; their contents leave the machine and\nbecome publicly accessible. Use this (and/or web_search) to CONFIRM any specific identification\n— model/species/place/person/event — before you answer; appearance alone is not proof. Grab the\nframe to search with save_view (don't run ffmpeg yourself).",
+    "inputSchema": {
+      "properties": {
+        "image_path": {
+          "description": "Absolute path to the image file to search, OR a public http(s) image URL.",
+          "type": "string"
+        },
+        "bbox": {
+          "description": "Bounding box [x1, y1, x2, y2] in relative coordinates (0-1000). Optional.",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array"
+        },
+        "api_key": {
+          "description": "Serper API key (defaults to SERPER_API_KEY).",
+          "type": "string"
+        },
+        "allow_public_upload": {
+          "default": false,
+          "description": "Explicit consent to upload a local image (or cropped copy) to the\nthird-party public host uguu.se. Required whenever image_path is local or bbox requires\nre-uploading a public URL.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "image_path"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "search",
+    "name": "web_extractor",
+    "description": "Crawl and extract content from web pages, with optional summarization. Returns the extracted\n\ntext or a summary focused on the specified goal.",
+    "inputSchema": {
+      "properties": {
+        "urls": {
+          "description": "URLs to crawl and extract content from.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "goal": {
+          "description": "What information to extract or focus on.",
+          "type": "string"
+        },
+        "api_key": {
+          "description": "API key for the selected search backend (defaults to its backend-specific\nenvironment key).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "urls",
+        "goal"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "search",
+    "name": "web_search",
+    "description": "Search the internet for text information. Returns search results with titles, snippets, and\n\nURLs.",
+    "inputSchema": {
+      "properties": {
+        "queries": {
+          "description": "List of search queries to execute.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "api_key": {
+          "description": "API key for the selected search backend (defaults to its backend-specific\nenvironment key).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "queries"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "audio",
+    "name": "transcribe_audio",
+    "description": "Transcribe local audio/video through Magpie. Choose provider/model; the default uses\n\nBailian Token Plan. language is a language code such as zh or en. SRT timestamps retain\nthe upstream tool's coarse 60-second chunk boundaries. Provider keys stay in Magpie.\nExplicit enable_itn is supported only for legacy Qwen3-ASR models.",
+    "inputSchema": {
+      "properties": {
+        "file_path": {
+          "description": "Existing local audio or video file.",
+          "type": "string"
+        },
+        "model": {
+          "default": "bailian-token-plan/qwen-audio-3.0-asr-flash",
+          "description": "Magpie provider/model identifier; defaults to Bailian Token Plan ASR.",
+          "type": "string"
+        },
+        "start_time": {
+          "description": "Start offset in seconds, default zero.",
+          "type": "number"
+        },
+        "end_time": {
+          "description": "End offset in seconds, default full duration.",
+          "type": "number"
+        },
+        "format": {
+          "default": "srt",
+          "description": "Output format: srt, text, or json.",
+          "enum": [
+            "srt",
+            "text",
+            "json"
+          ],
+          "type": "string"
+        },
+        "language": {
+          "description": "Language code such as zh or en; omit for detection.",
+          "type": "string"
+        },
+        "enable_itn": {
+          "description": "Optional normalization flag for legacy Qwen3-ASR only.",
+          "type": "boolean"
+        },
+        "api_key": {
+          "description": "Omit when connected; provider credentials are managed by Magpie.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_path"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "entry": "audio",
+    "name": "synthesize_speech",
+    "description": "Generate speech through Magpie and save an audio artifact. output_path must be a new\n\nabsolute file path. voice is required; Bailian Token Plan supports longanhuan_v3.6.\nChoose provider/model. Compatible providers use /audio/speech; Bailian uses Magpie's\nnative API relay. Billing follows the selected provider; no provider key is accepted.",
+    "inputSchema": {
+      "properties": {
+        "text": {
+          "description": "Text to speak.",
+          "type": "string"
+        },
+        "output_path": {
+          "description": "New absolute audio file path in an existing directory.",
+          "type": "string"
+        },
+        "voice": {
+          "description": "Provider voice identifier; Token Plan supports longanhuan_v3.6.",
+          "type": "string"
+        },
+        "model": {
+          "default": "bailian-token-plan/qwen-audio-3.0-tts-plus",
+          "description": "Magpie provider/model identifier; defaults to Bailian Token Plan TTS.",
+          "type": "string"
+        },
+        "format": {
+          "default": "wav",
+          "description": "Output audio format: wav, mp3, or pcm.",
+          "enum": [
+            "wav",
+            "mp3",
+            "pcm"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "output_path",
+        "voice"
+      ],
+      "type": "object"
+    }
+  }
+]

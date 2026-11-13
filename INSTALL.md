@@ -1,99 +1,51 @@
-# Install
-
-This repository is a Magpie wrapper for [Qwen-MM-Plugins](https://github.com/QwenLM/Qwen-MM-Plugins), not a fork. The launcher and MCP commands use the upstream tag `qwen-mm-plugins-video-spatio-v1.1.0` with the `api`, `search`, and `video-spatio` extras.
+# Install — native plugin tools (0.4.0)
 
 ## Requirements
 
-- Magpie with community plugins, agent providers, and Library → MCP support.
-- Git, Node.js 22 or later, Python 3.13, [uv / uvx](https://docs.astral.sh/uv/getting-started/installation/), and FFmpeg on `PATH`. Magpie's MCP process must also be able to find `uvx` and FFmpeg.
-- Your own providers and models configured in Magpie. Choose a vision model for VL and a model supporting your intended audio/video inputs for Omni.
+- A current Magpie with community plugin tools and automatic per-plugin Library registration (the plugin `tool` hook and automatic Library registration).
+- Git, uv/uvx, FFmpeg/ffprobe available on the Magpie host PATH. Node.js 22+ is recommended for development and read-only checks.
+- Python 3.13 in the uv runtime; first tool use prepares the pinned upstream runtime with `uvx`.
+- Your own providers and models configured in Magpie. Required service keys remain in your existing native configuration or Magpie.
 
-The first `uvx` launch downloads the pinned upstream package and its dependencies. API-backed tools require your own configured services; this wrapper does not install local model weights.
+No local model weights are downloaded. First tool use may download the pinned Python package and dependencies; plugin loading and tool enumeration do not.
 
-## Register the plugin
-
-Clone to a known location so the MCP servers can use a stable absolute path:
-
-```sh
-mkdir -p "$HOME/.config/magpie/local-plugins" "$HOME/.qwen-mm-plugins"
-git clone https://github.com/double2tea/magpie-qwen-mm.git "$HOME/.config/magpie/local-plugins/qwen-mm"
-magpie plugin add "$HOME/.config/magpie/local-plugins/qwen-mm"
-```
-
-Create `~/.qwen-mm-plugins` before registering: Magpie uses this directory to detect the `qwen-mm` agent. It is separate from the plugin's source directory.
-
-Magpie also supports direct GitHub installation:
+## Install
 
 ```sh
 magpie plugin add github:double2tea/magpie-qwen-mm
 ```
 
-Use one installation method. For a GitHub installation, resolve its actual installed directory before configuring MCP; do not assume it is the clone location above. `magpie plugin list --json` can help inspect the registered plugin. If it does not expose a usable source path, use the fixed local clone method.
-
-## Connect and choose models
+For a local checkout, register its stable directory instead:
 
 ```sh
-magpie qwen-mm provider magpie
+git clone https://github.com/double2tea/magpie-qwen-mm.git "$HOME/.config/magpie/local-plugins/qwen-mm"
+magpie plugin add "$HOME/.config/magpie/local-plugins/qwen-mm"
 ```
 
-Open the **magpie-agent-qwen-mm-plugins** page in Magpie and select VL and Omni independently from your own providers/models. The page service listens locally on port `3496`; open it through Magpie. The managed agent configuration is `~/.config/magpie/qwen-mm/config`.
+Use one copy. After loading, Magpie automatically creates the plugin-owned MCP entry in Library, serving its native tools. There are no manual Python MCP commands, shell variables or absolute script paths to enter. If the MCP router is enabled, its existing Agent access controls apply; otherwise choose permitted Agents on the automatic Library entry.
 
-Provider IDs are specific to your Magpie setup. No provider named `qwen-cn` or `bailian-token-plan` is required for selecting VL and Omni. Provider credentials remain managed in Magpie; do not paste them into this repository, MCP arguments, or logs. The connection command writes Magpie's gateway connection to the managed config; installation does not replace your native upstream API keys.
+The Agent descriptor detects `~/.qwen-mm-plugins`. Create that directory if it does not already exist, open the Qwen-MM Agent in Magpie, connect it, and select VL and Omni independently on the plugin page. This preserves native upstream settings and uses `~/.config/magpie/qwen-mm/config` for compatible gateway calls. The settings page remains a token-protected loopback service on port 3496.
 
-## Add the MCP servers
+## Tools and long tasks
 
-Generate the exact entries for the installed directory, without writing any configuration:
+The plugin registers 24 business tools prefixed `qwen_` (two audio, three search and nineteen video-spatial tools), plus `qwen_task_status` and `qwen_task_cancel`.
+
+Each business call returns `{job_id,status,result?}`. Fast tasks complete in the call; a task exceeding 20 seconds returns `running`, and the Agent polls `qwen_task_status`. The existing audio parameter names remain `file_path`, `start_time`, `end_time`, `format`, etc. Generated speech requires `text`, `voice` and `output_path`.
+
+Tasks have a 15-minute runtime limit, at most eight running tasks, a bounded in-memory result list, and 30-minute completed-result retention. A plugin-host restart loses tickets; cancelled/failed work does not silently report success. Tickets are restricted to their calling Agent identity, not to an individual conversation: two conversations using the same Agent can access a ticket if they know its ID. Results do not persist across host restarts. Cancel signals the complete task process group on macOS/Linux; Windows cancellation cannot guarantee descendant termination.
+
+Native tools run a worker only on use. No companion Python MCP service remains, and no additional daemon is installed. The plugin does not change Agent defaults or routing.
+
+## Read-only check
 
 ```sh
 node /actual/plugin/path/setup.mjs --check
 ```
 
-The result contains names, commands and argument arrays ready to copy into Library → MCP. It checks executable availability on the current PATH and prints installed Node/Python versions. It does not install dependencies, create environments, download models, overwrite existing MCP entries or enable Agents. Magpie's GUI process may have a different PATH; a shell check is not a full runtime compatibility test. Review the requirements above (including Python 3.13 and Node 22+) against the reported versions.
+This checks packaged files and executable availability and reports native tool count. It does not emit manual MCP registration instructions, write Library, enable Agents or download dependencies. Magpie started from the Dock may have a different PATH from your shell.
 
+## Remove
 
-In **Magpie → Library → MCP**, manually add these three stdio entries. Enable the ones you need for your agent:
+Remove the plugin in Magpie or run `magpie plugin rm <installed-spec>`. Magpie removes its plugin-owned tool entry; it owns that lifecycle. User-native upstream settings and generated output files are retained. Disabling stops listing tools, but existing running tasks should be cancelled before disabling or updating.
 
-| Suggested name | Final argument (`ENTRY`) |
-| --- | --- |
-| `qwen-mm-audio` | `audio` |
-| `qwen-mm-search` | `search` |
-| `qwen-mm-video-spatio` | `video-spatio` |
-
-Use `uvx` as the command for each entry, with this argument array:
-
-```json
-[
-  "--from",
-  "qwen-mm-plugins[api,search,video-spatio] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-video-spatio-v1.1.0",
-  "python",
-  "/ABSOLUTE/HOME/.config/magpie/local-plugins/qwen-mm/qwen_mm_gateway.py",
-  "ENTRY"
-]
-```
-
-Replace `ENTRY` with the corresponding table value and `/ABSOLUTE/HOME` with your actual home directory. JSON arguments do **not** expand `~`, `$HOME`, or shell variables. For a different installation location, use that plugin's actual absolute `qwen_mm_gateway.py` path. Do not point these entries directly at the upstream modules: the gateway applies the Magpie adapters.
-
-The bundled `qwen-mm` executable runs the same pinned wrapper, for example:
-
-```sh
-"$HOME/.config/magpie/local-plugins/qwen-mm/qwen-mm" audio
-```
-
-## Speech and search services
-
-Speech defaults use `bailian-token-plan/qwen-audio-3.0-asr-flash` and `bailian-token-plan/qwen-audio-3.0-tts-plus`. These defaults only work if that provider exists in your Magpie setup. Otherwise pass an explicit `model` as `your-provider-id/your-model` to the speech tool and ensure the provider supports the relevant transcription or speech endpoint. Selecting the page's Omni model does not change these speech defaults.
-
-When connected, `web_search` and `web_extractor` use Magpie's configured web-search service. `image_search` still uses upstream Serper and needs your own `SERPER_API_KEY` in the upstream/native configuration. The pinned search dependencies include `requests`. For direct native upstream use, configure your own required API keys following the [upstream documentation](https://github.com/QwenLM/Qwen-MM-Plugins/tree/qwen-mm-plugins-video-spatio-v1.1.0); registration does not provision those keys. Keep keys out of logs and shared configuration examples.
-
-## Verify locally
-
-From the repository directory:
-
-```sh
-node --test settings.test.mjs server.test.mjs page.test.mjs
-PYTHONDONTWRITEBYTECODE=1 TMPDIR=/tmp uvx --python 3.13 --from 'qwen-mm-plugins[api,search,video-spatio] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@qwen-mm-plugins-video-spatio-v1.1.0' python -m unittest -q test_qwen_mm_gateway test_qwen_mm_audio test_qwen_mm_search
-```
-
-The tests use generated media, mocks, and local HTTP fixtures. They require FFmpeg but no API keys, external model calls, or local model downloads. Dependency installation requires network access unless already cached.
-
-中文摘要：先创建 `~/.qwen-mm-plugins`，再克隆到固定本地目录并用绝对路径注册。运行 `magpie qwen-mm provider magpie` 后，在 magpie-agent-qwen-mm-plugins 页面分别选择自己已有的 VL、Omni 模型。Library → MCP 中手动添加上表三个入口，JSON 路径必须替换成真实绝对路径；语音默认 provider 与 Serper 图片搜索所需密钥需自行配置。
+This version has one native registration path. Old hand-written `qwen-mm-audio`, `qwen-mm-plugins-search` and `qwen-mm-plugins-video-spatio` entries are obsolete and should not coexist with the native plugin. They are not created by the new package. Removing pre-existing user entries is an explicit administration action, not a hidden install hook.

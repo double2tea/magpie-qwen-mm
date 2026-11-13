@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — 2026-11-13
+
+- Replace three manual MCP registrations with native plugin tools and Magpie-owned Library lifecycle.
+- Preserve the existing 24 tool schemas/handlers; add Agent-owned task queries and cancellation for long operations.
+- Remove the stdio shell launcher and manual setup plan. Keep a read-only native installation checker.
+- Preserve model settings, native keys, media adapters and WAV repair.
+
 ## 0.3.7 — 2026-11-13
 
 - Add a read-only setup assistant that outputs installation-specific MCP arguments and checks available dependencies.

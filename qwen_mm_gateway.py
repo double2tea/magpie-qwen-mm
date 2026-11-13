@@ -1,13 +1,11 @@
-"""Launch the upstream Qwen MM servers with Magpie's compatible API settings."""
+"""Apply Magpie-compatible settings to the pinned upstream tool handlers."""
 
 from __future__ import annotations
 
 import base64
-import importlib
 import json
 import mimetypes
 from pathlib import Path
-import sys
 import tempfile
 from urllib.parse import urlsplit
 from urllib.request import urlopen
@@ -156,29 +154,3 @@ def install():
     from qwen_mm_search import install as install_search
     install_audio(settings)
     install_search(settings)
-
-
-def main():
-    entries = {'video-spatio': 'qwen_mm_plugins_video_spatio',
-               'api': 'qwen_mm_plugins_api', 'core': 'qwen_mm_plugins_core',
-               'search': 'qwen_mm_plugins_search', 'audio': 'qwen_mm_magpie_audio'}
-    if len(sys.argv) < 2 or sys.argv[1] not in entries:
-        raise SystemExit('Usage: python qwen_mm_gateway.py {video-spatio|api|core|search|audio} [args...]')
-    entry = entries[sys.argv.pop(1)]
-    install()
-    if entry == 'qwen_mm_magpie_audio':
-        from types import ModuleType
-        from mcp_framework import run_main
-        import qwen_mm_plugins_api as api
-        module = ModuleType(entry)
-        module.__version__ = json.loads(Path(__file__).with_name('package.json').read_text())['version']
-        module.SPECS = [spec for spec in api.SPECS if spec.name in ('transcribe_audio', 'synthesize_speech')]
-        module.USAGE_NOTE = 'Speech via Magpie. Provider/model selects the channel; provider credentials stay in Magpie.'
-        sys.modules[entry] = module
-        run_main(entry)
-    else:
-        importlib.import_module(entry + '.__main__').main()
-
-
-if __name__ == '__main__':
-    main()

@@ -1,4 +1,5 @@
 import { startServer } from "./server.mjs";
+import { createTools } from "./tools.mjs";
 
 let starting;
 function ensureServer() {
@@ -20,6 +21,6 @@ export default {
   id: "qwen-mm-settings",
   server: async () => {
     await ensureServer();
-    return {};
+    return { tool: createTools() };
   },
 };
